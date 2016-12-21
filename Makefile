@@ -35,7 +35,7 @@ deinstall:
 pam_chk: $(pam_chk_objs)
 	$(CC) $(LDFLAGS) -o $@ $(pam_chk_objs)
 
-.depend: $(SOURCES) *.h
-	$(CC) -MM $(SOURCES)
+.depend: 
+	$(CC) -MM $(SOURCES) > $@
 
 -include .depend

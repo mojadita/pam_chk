@@ -1,2 +1,3 @@
 *.o
 pam_chk
+.depend
