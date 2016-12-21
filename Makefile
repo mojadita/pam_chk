@@ -13,7 +13,7 @@ XMOD	?= -m 0711
 prefix	?= $(HOME)
 bindir	?= $(prefix)/bin
 
-pam_chk_objs = main.o
+pam_chk_objs = main.o conv.o
 SOURCES += $(pam_chk_objs:.o=.c)
 TOCLEAN += $(pam_chk_objs)
 pam_chk_libs = -lpam
@@ -33,7 +33,7 @@ deinstall:
 	-$(RM) $(bindir)/pam_chk 
 
 pam_chk: $(pam_chk_objs)
-	$(CC) $(LDFLAGS) -o $@ $(pam_chk_objs)
+	$(CC) $(LDFLAGS) -o $@ $(pam_chk_objs) $(pam_chk_libs)
 
 .depend: 
 	$(CC) -MM $(SOURCES) > $@

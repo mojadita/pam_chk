@@ -40,74 +40,13 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <termios.h>
-#include <unistd.h>
-#include <errno.h>
-#include <signal.h>
-#include <getopt.h>
 
-#include <sys/types.h>
-#include <security/pam_appl.h>
+#ifndef _CONV_H_INCLUDED
+#define _CONV_H_INCLUDED
 
-#include "conv.h"
+int conv(int,
+	const struct pam_message **,
+	struct pam_response **,
+	void *);
 
-#define F(x) __FILE__":%d:%s: " x, __LINE__, __func__
-#define D(cmd) do{ \
-		res = cmd; \
-		printf(F(#cmd " => %d (%s)\n"), res, pam_strerror(ph, res)); \
-	} while(0)
-
-const char *progname;
-char *user = NULL,
-	*service = NULL;
-
-int main(int argc, char **argv)
-{
-	int opt, res;
-	pam_handle_t *ph;
-	struct pam_conv callback_info;
-
-	progname = argv[0];
-
-	while ((opt = getopt(argc, argv, "")) != EOF) {
-		switch(opt) {
-		}
-	} /* while */
-
-	argc -= optind;
-	argv += optind;
-
-	if (argc) {
-		service = *argv++;
-		argc--;
-	}
-
-	if (argc) {
-		user = *argv++;
-		argc--;
-	}
-
-	if (!service || argc) {
-		fprintf(stderr,
-			F("usage: %s [ options ... ] service [ user ]\n"),
-			progname);
-		exit(EXIT_FAILURE);
-	}
-
-
-	printf(F("service = %s; user = %s;\n"),
-		service, user ? user : "<<NO_USER_INDICATED>>");
-	callback_info.conv = conv;
-	callback_info.appdata_ptr = NULL;
-
-	D(pam_start(service, user, &callback_info, &ph));
-	D(pam_authenticate(ph, PAM_DISALLOW_NULL_AUTHTOK));
-	D(pam_end(ph, res));
-
-	exit(EXIT_SUCCESS);
-
-} /* main */
+#endif /* _CONV_H_INCLUDED */

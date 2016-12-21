@@ -40,74 +40,71 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#include <stdarg.h>
+
+#include <errno.h>
+#include <sys/types.h>
+#include <security/pam_appl.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
-#include <errno.h>
-#include <signal.h>
-#include <getopt.h>
-
-#include <sys/types.h>
-#include <security/pam_appl.h>
 
 #include "conv.h"
 
 #define F(x) __FILE__":%d:%s: " x, __LINE__, __func__
-#define D(cmd) do{ \
-		res = cmd; \
-		printf(F(#cmd " => %d (%s)\n"), res, pam_strerror(ph, res)); \
-	} while(0)
 
-const char *progname;
-char *user = NULL,
-	*service = NULL;
+static char *message_type(int n, char *buf, size_t bsz);
 
-int main(int argc, char **argv)
+int conv(int n,
+	const struct pam_message **rcv,
+	struct pam_response **snt,
+	void *p)
 {
-	int opt, res;
-	pam_handle_t *ph;
-	struct pam_conv callback_info;
+	int i;
+	char buffer[32];
+	char line[PAM_MAX_RESP_SIZE];
+	char *str;
 
-	progname = argv[0];
+	*snt = calloc(n, sizeof *snt);
 
-	while ((opt = getopt(argc, argv, "")) != EOF) {
-		switch(opt) {
-		}
-	} /* while */
+	for (i = 0; i < n; i++) {
+		printf(F("message#%d: type=%s; message=[%s]\n"),
+			i, message_type(rcv[i]->msg_style,
+			buffer, sizeof buffer), rcv[i]->msg);
+		switch(rcv[i]->msg_style){
+		case PAM_PROMPT_ECHO_OFF:
 
-	argc -= optind;
-	argv += optind;
+		case PAM_PROMPT_ECHO_ON:
+			snt[i] = malloc(sizeof *snt[i]);
+			snprintf(line, sizeof line, "user_resp[%d]", i);
+			snt[i]->resp = strdup(line);
+			snt[i]->resp_retcode = 0;
+			break;
+		} /* switch */
+	} /* for */
 
-	if (argc) {
-		service = *argv++;
-		argc--;
-	}
+	return PAM_SUCCESS;
+} /* conv */
 
-	if (argc) {
-		user = *argv++;
-		argc--;
-	}
+static char *message_type(int n, char *buf, size_t bsz)
+{
+	switch(n) {
 
-	if (!service || argc) {
-		fprintf(stderr,
-			F("usage: %s [ options ... ] service [ user ]\n"),
-			progname);
-		exit(EXIT_FAILURE);
-	}
+#define C(m) case PAM_ ## m: return "PAM_" #m
+	C(PROMPT_ECHO_OFF);
+	C(PROMPT_ECHO_ON);
+	C(ERROR_MSG);
+	C(TEXT_INFO);
+#undef C
 
+	default:
+		snprintf(buf, bsz,"UNKNOWN(%d)", n);
+		return buf;
 
-	printf(F("service = %s; user = %s;\n"),
-		service, user ? user : "<<NO_USER_INDICATED>>");
-	callback_info.conv = conv;
-	callback_info.appdata_ptr = NULL;
+	} /* switch */
 
-	D(pam_start(service, user, &callback_info, &ph));
-	D(pam_authenticate(ph, PAM_DISALLOW_NULL_AUTHTOK));
-	D(pam_end(ph, res));
+	/* NOTREACHED */
 
-	exit(EXIT_SUCCESS);
-
-} /* main */
+} /* message_type */
