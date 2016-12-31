@@ -49,6 +49,7 @@
 #include <errno.h>
 #include <signal.h>
 #include <getopt.h>
+#include <locale.h>
 
 #include <sys/types.h>
 #include <security/pam_appl.h>
@@ -58,7 +59,7 @@
 #define F(x) __FILE__":%d:%s: " x, __LINE__, __func__
 #define D(cmd) do{ \
 		res = cmd; \
-		printf(F(#cmd " => %d (%s)\n"), res, pam_strerror(ph, res)); \
+		printf(F(#cmd " => %d (%s)\n"), res, pam_strerror(state.ph, res)); \
 	} while(0)
 
 const char *progname;
@@ -68,10 +69,11 @@ char *user = NULL,
 int main(int argc, char **argv)
 {
 	int opt, res;
-	pam_handle_t *ph;
+	struct conv_state state;
 	struct pam_conv callback_info;
 
 	progname = argv[0];
+	setlocale(LC_ALL, "");
 
 	while ((opt = getopt(argc, argv, "")) != EOF) {
 		switch(opt) {
@@ -99,14 +101,18 @@ int main(int argc, char **argv)
 	}
 
 
+	printf(F("uid=%d; euid=%d\n"), getuid(), geteuid());
 	printf(F("service = %s; user = %s;\n"),
 		service, user ? user : "<<NO_USER_INDICATED>>");
 	callback_info.conv = conv;
 	callback_info.appdata_ptr = NULL;
 
-	D(pam_start(service, user, &callback_info, &ph));
-	D(pam_authenticate(ph, PAM_DISALLOW_NULL_AUTHTOK));
-	D(pam_end(ph, res));
+	state.user = NULL;
+	state.pass = NULL;
+
+	D(pam_start(service, user, &callback_info, &state.ph));
+	D(pam_authenticate(state.ph, 0));
+	D(pam_end(state.ph, res));
 
 	exit(EXIT_SUCCESS);
 

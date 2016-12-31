@@ -41,6 +41,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <assert.h>
+#include <ctype.h>
 #include <errno.h>
 #include <sys/types.h>
 #include <security/pam_appl.h>
@@ -56,6 +58,7 @@
 #define F(x) __FILE__":%d:%s: " x, __LINE__, __func__
 
 static char *message_type(int n, char *buf, size_t bsz);
+static void clean(struct pam_response array[], int n);
 
 int conv(int n,
 	const struct pam_message **rcv,
@@ -65,28 +68,61 @@ int conv(int n,
 	int i;
 	char buffer[32];
 	char line[PAM_MAX_RESP_SIZE];
-	char *str;
+	struct conv_status *q = p;
 
 	*snt = calloc(n, sizeof *snt);
 
 	for (i = 0; i < n; i++) {
-		printf(F("message#%d: type=%s; message=[%s]\n"),
-			i, message_type(rcv[i]->msg_style,
-			buffer, sizeof buffer), rcv[i]->msg);
-		switch(rcv[i]->msg_style){
-		case PAM_PROMPT_ECHO_OFF:
+		const struct pam_message *r = rcv[i];
+		struct termios saved_tty;
+		int res;
 
+		printf(F("message#%d: type=[%s]; message=[%s]\n"),
+			i, message_type(r->msg_style,
+			buffer, sizeof buffer), r->msg);
+
+		if(r->msg_style == PAM_PROMPT_ECHO_OFF) {
+			struct termios new_tty;
+			res = tcgetattr(0, &saved_tty);
+			new_tty = saved_tty;
+			new_tty.c_lflag &= ~ECHO;
+			tcsetattr(0, TCSAFLUSH, &new_tty);
+		} /* if */
+
+		switch(r->msg_style) {
 		case PAM_PROMPT_ECHO_ON:
-			snt[i] = malloc(sizeof *snt[i]);
-			snprintf(line, sizeof line, "user_resp[%d]", i);
-			snt[i]->resp = strdup(line);
-			snt[i]->resp_retcode = 0;
-			break;
+		case PAM_PROMPT_ECHO_OFF:
+			res = read(0, line, sizeof line - 1);
+			if (res < 0) {
+				fprintf(stderr, F("read: %s (errno = %d)\n"),
+					strerror(errno), errno);
+				clean(*snt, i);
+				*snt = NULL;
+				return PAM_CONV_ERR;
+			}
+
+			/* eliminate trailing control chars */
+			while (res > 0 && iscntrl(line[res-1])) res--;
+			line[res] = 0; /* nul terminator */
+			(*snt)[i].resp_retcode = 0;
+			(*snt)[i].resp = strdup(line);
 		} /* switch */
+
+		if (r->msg_style == PAM_PROMPT_ECHO_OFF) {
+			tcsetattr(0, TCSADRAIN, &saved_tty);
+		} /* if */
 	} /* for */
 
 	return PAM_SUCCESS;
 } /* conv */
+
+static void clean(struct pam_response array[], int n)
+{
+	int i;
+	for (i = 0; i < n; i++)
+		free(array[i].resp);
+	free(array);
+} /* clean */
 
 static char *message_type(int n, char *buf, size_t bsz)
 {

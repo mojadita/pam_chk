@@ -44,6 +44,12 @@
 #ifndef _CONV_H_INCLUDED
 #define _CONV_H_INCLUDED
 
+struct conv_state {
+	char *user;
+	char *pass;
+	pam_handle_t *ph;
+};
+
 int conv(int,
 	const struct pam_message **,
 	struct pam_response **,
