@@ -43,12 +43,14 @@
 # include "config.h"
 #endif
 
-#include <sys/param.h>
-
+#include <errno.h>
+#include <getopt.h>
 #include <pwd.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/param.h>
+#include <time.h>
 #include <unistd.h>
 
 #ifdef HAVE_CRYPT_H
@@ -64,8 +66,7 @@
 #define PAM_EXTERN
 #endif
 
-
-
+static FILE *out = NULL;
 
 PAM_EXTERN int
 pam_sm_authenticate(pam_handle_t *pamh, int flags,
@@ -77,31 +78,49 @@ pam_sm_authenticate(pam_handle_t *pamh, int flags,
 	} items[] = {
 #define I(n) { PAM_##n, #n }
 		I(SERVICE), I(USER), I(TTY), I(RHOST), I(AUTHTOK),
-		I(OLDAUTHTOK), I(RUSER), I(USER_PROMPT), I(AUTHTOK_PROMPT),
-		I(OLDAUTHTOK_PROMPT), I(HOST),
+		I(OLDAUTHTOK), I(RUSER), I(USER_PROMPT), I(REPOSITORY),
+		I(AUTHTOK_PROMPT), I(OLDAUTHTOK_PROMPT), I(HOST),
 #undef I
 		{ 0, NULL }
 	};
 	int i, res;
 
-	fprintf(stderr, F("argc = %d, argv = "), argc);
-	for (i = 0; i < argc; i++)
-		fprintf(stderr, "%s%s", i ? "[" : ", ", argv[i]);
-	fprintf(stderr, "]\n");
+    while((res = getopt(argc, argv, "o:")) != EOF) {
+        switch(res) {
+        case 'o': if (!out) {
+                      out = fopen(optarg, "a");
+                      if (!out) {
+                          fprintf(stderr, F("%s: %s (errno = %d)\n"),
+                                  optarg, strerror(errno), errno);
+                          return PAM_SYSTEM_ERR;
+                      }
+                  } break;
+        } /* swith */
+    } /* while */
 
+	if (!out) out = stderr;
+
+	fprintf(out, F("[%ld]: BEGIN: argc = %d, argv = "),
+		time(NULL), argc);
+	for (i = 0; i < argc; i++)
+		fprintf(out, "%s%s", i ? ", " : "[", argv[i]);
+	fprintf(out, "]\n");
 
 	for (i = 0; items[i].i_str; i++) {
 		const char *item;
 		int res = pam_get_item(pamh, items[i].i_val, &item);
-		fprintf(stderr, F("%20s: "), items[i].i_str);
-		if (res == PAM_SUCCESS) {
-			fprintf(stderr, "%s\n", item);
-		} else {
-			fprintf(stderr, "<<ERROR>> %s(%d)\n",
-				pam_strerror(pamh, res), res);
-		} /* if */
+		if (res != PAM_SUCCESS) {
+			fprintf(stderr, F("pam_get_item: %s: %s(%d)\n"),
+				items[i].i_str,
+				pam_strerror(pamh, res),
+				res);
+			return PAM_SYSTEM_ERR;
+		}
+		if (item)
+			fprintf(out, F("%12s: %s\n"),
+                    items[i].i_str, item);
 	} /* for */
-
+    fflush(out);
 
 #if 0
 	/* identify user */
@@ -122,7 +141,7 @@ pam_sm_authenticate(pam_handle_t *pamh, int flags,
 	for (retry = 0; retry < 3; ++retry) {
 #ifdef OPENPAM
 		pam_err = pam_get_authtok(pamh, PAM_AUTHTOK,
-		    &password, NULL);
+			&password, NULL);
 #else
 		resp = NULL;
 		pam_err = (*conv->conv)(1, &msgp, &resp, conv->appdata_ptr);
@@ -144,8 +163,8 @@ pam_sm_authenticate(pam_handle_t *pamh, int flags,
 
 	/* compare passwords */
 	if ((!pwd->pw_passwd[0] && (flags & PAM_DISALLOW_NULL_AUTHTOK)) ||
-	    (crypt_password = crypt(password, pwd->pw_passwd)) == NULL ||
-	    strcmp(crypt_password, pwd->pw_passwd) != 0)
+		(crypt_password = crypt(password, pwd->pw_passwd)) == NULL ||
+		strcmp(crypt_password, pwd->pw_passwd) != 0)
 		pam_err = PAM_AUTH_ERR;
 	else
 		pam_err = PAM_SUCCESS;
